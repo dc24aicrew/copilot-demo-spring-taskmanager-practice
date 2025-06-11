@@ -2,6 +2,8 @@ package com.demo.copilot.taskmanager.infrastructure.security;
 
 import java.io.IOException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,6 +27,8 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+    
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String AUTHORIZATION_HEADER = "Authorization";
 
@@ -65,8 +69,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // Load user details
                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
-                // Validate token
-                if (jwtService.isTokenValid(jwt, userDetails)) {
+                // Validate token and ensure it's not blacklisted
+                if (jwtService.isTokenValid(jwt, userDetails) && !jwtService.isTokenBlacklisted(jwt)) {
                     
                     // Create authentication token
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
@@ -80,11 +84,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     
                     // Set authentication in SecurityContext
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                } else if (jwtService.isTokenBlacklisted(jwt)) {
+                    logger.debug("Rejected blacklisted token for user: {}", username);
                 }
             }
         } catch (Exception e) {
             // Log the exception (in a real app, use proper logging)
-            logger.error("Cannot set user authentication: " + e.getMessage());
+            logger.error("Cannot set user authentication: {}", e.getMessage());
         }
 
         filterChain.doFilter(request, response);

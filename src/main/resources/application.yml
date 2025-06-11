@@ -40,7 +40,7 @@ spring:
       expiration: ${JWT_EXPIRATION:86400000} # 24 hours in milliseconds
       refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000} # 7 days
 
-  # Redis configuration
+  # Enhanced Redis configuration for reliability and performance
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -48,14 +48,20 @@ spring:
       password: ${REDIS_PASSWORD:}
       database: ${REDIS_DATABASE:0}
       timeout: 3000ms
+      connect-timeout: 2000ms  # Add connection timeout
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
       lettuce:
         pool:
           max-active: 8
           max-idle: 8
-          min-idle: 0
-          max-wait: -1ms
+          min-idle: 2           # Ensure minimum connections
+          max-wait: 2000ms      # Specific wait time
+        shutdown-timeout: 100ms
+      # Add sentinel configuration for HA
+      sentinel:
+        master: ${REDIS_SENTINEL_MASTER:}
+        nodes: ${REDIS_SENTINEL_NODES:}
 
   cache:
     type: redis
@@ -67,6 +73,9 @@ spring:
       - jwt-blacklist
     redis:
       time-to-live: 10m
+      key-prefix: "taskmanager:"  # Add key prefixing
+      use-key-prefix: true
+      cache-null-values: false
 
 server:
   port: ${SERVER_PORT:8080}

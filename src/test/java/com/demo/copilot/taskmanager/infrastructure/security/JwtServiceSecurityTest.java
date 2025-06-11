@@ -23,7 +23,7 @@ class JwtServiceSecurityTest {
 
     @BeforeEach
     void setUp() {
-        jwtService = new JwtService();
+        jwtService = new JwtService(null); // No Redis template for unit tests
         
         // Set test properties
         ReflectionTestUtils.setField(jwtService, "jwtSecret", "test-secret-key-with-sufficient-length-for-security-requirements");

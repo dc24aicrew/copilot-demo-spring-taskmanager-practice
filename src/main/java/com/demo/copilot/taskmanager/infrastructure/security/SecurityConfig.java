@@ -113,6 +113,24 @@ public class SecurityConfig {
                     response.setHeader("Permissions-Policy", 
                         "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
                 })
+                
+                // Additional security headers for comprehensive protection
+                .addHeaderWriter((request, response) -> {
+                    // Certificate Transparency for SSL/TLS security
+                    response.setHeader("Expect-CT", "enforce, max-age=86400");
+                    
+                    // Prevent DNS rebinding attacks
+                    response.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+                    
+                    // Prevent information disclosure
+                    response.setHeader("X-Robots-Tag", "noindex, nofollow, nosnippet, noarchive");
+                })
+                
+                // Modern browser security headers
+                .addHeaderWriter((request, response) -> {
+                    response.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+                    response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+                })
             )
             
             // Session management - stateless for JWT

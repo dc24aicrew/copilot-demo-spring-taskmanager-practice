@@ -38,9 +38,10 @@ public class CacheConfig {
     @ConditionalOnProperty(name = "spring.cache.type", havingValue = "redis", matchIfMissing = false)
     public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory) {
         
-        // Default cache configuration
+        // Default cache configuration with enhanced features
         RedisCacheConfiguration defaultCacheConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(10)) // Default TTL: 10 minutes
+                .prefixCacheNameWith("taskmanager:") // Prevent key conflicts
                 .serializeKeysWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
