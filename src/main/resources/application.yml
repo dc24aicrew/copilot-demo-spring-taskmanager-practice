@@ -58,10 +58,10 @@ spring:
           min-idle: 2           # Ensure minimum connections
           max-wait: 2000ms      # Specific wait time
         shutdown-timeout: 100ms
-      # Add sentinel configuration for HA
-      sentinel:
-        master: ${REDIS_SENTINEL_MASTER:}
-        nodes: ${REDIS_SENTINEL_NODES:}
+      # Sentinel configuration (uncomment and configure for production HA)
+      # sentinel:
+      #   master: mymaster
+      #   nodes: "localhost:26379,localhost:26380,localhost:26381"
 
   cache:
     type: redis
@@ -183,6 +183,12 @@ spring:
   # Use simple cache for testing
   cache:
     type: simple
+    
+  # Disable Redis auto-configuration for tests but keep cache auto-configuration
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
 
 logging:
   level:
