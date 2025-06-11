@@ -11,6 +11,11 @@ import com.demo.copilot.taskmanager.domain.entity.User;
 import com.demo.copilot.taskmanager.domain.valueobject.Email;
 import com.demo.copilot.taskmanager.domain.valueobject.UserId;
 import com.demo.copilot.taskmanager.infrastructure.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,15 +24,22 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Application service for user management operations.
+ * Enhanced application service for user management operations with caching.
  * 
  * This service orchestrates user-related business operations and
  * coordinates between the domain layer and infrastructure layer.
+ * 
+ * Caching strategy:
+ * - Users are cached for 30 minutes
+ * - Cache is invalidated on user updates and deletions
+ * - Frequently accessed users benefit from reduced database queries
  */
 @Service
 @Transactional
 public class UserService {
 
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
+    
     private final UserRepository userRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
@@ -76,20 +88,24 @@ public class UserService {
     }
 
     /**
-     * Get user by ID.
+     * Get user by ID with caching.
      */
+    @Cacheable(value = "users", key = "#id.value", unless = "#result == null")
     @Transactional(readOnly = true)
     public UserResponse getUserById(UserId id) {
+        logger.debug("Fetching user by ID: {}", id);
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + id));
         return userMapper.toResponse(user);
     }
 
     /**
-     * Get user by email.
+     * Get user by email with caching.
      */
+    @Cacheable(value = "users", key = "'email:' + #emailAddress", unless = "#result == null")
     @Transactional(readOnly = true)
     public UserResponse getUserByEmail(String emailAddress) {
+        logger.debug("Fetching user by email: {}", emailAddress);
         Email email = Email.of(emailAddress);
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UserNotFoundException("User not found with email: " + emailAddress));
@@ -97,10 +113,12 @@ public class UserService {
     }
 
     /**
-     * Get user by username.
+     * Get user by username with caching.
      */
+    @Cacheable(value = "users", key = "'username:' + #username", unless = "#result == null")
     @Transactional(readOnly = true)
     public UserResponse getUserByUsername(String username) {
+        logger.debug("Fetching user by username: {}", username);
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UserNotFoundException("User not found with username: " + username));
         return userMapper.toResponse(user);
@@ -118,10 +136,12 @@ public class UserService {
     }
 
     /**
-     * Get all active users.
+     * Get all active users with caching.
      */
+    @Cacheable(value = "users", key = "'active-users'")
     @Transactional(readOnly = true)
     public List<UserResponse> getActiveUsers() {
+        logger.debug("Fetching all active users");
         return userRepository.findByIsActiveTrue()
                 .stream()
                 .map(userMapper::toResponse)
@@ -129,9 +149,16 @@ public class UserService {
     }
 
     /**
-     * Update user information.
+     * Update user information with cache eviction.
      */
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#id.value"),
+        @CacheEvict(value = "users", key = "'email:' + #result.email"),
+        @CacheEvict(value = "users", key = "'username:' + #result.username"),
+        @CacheEvict(value = "users", key = "'active-users'", condition = "#result.isActive")
+    })
     public UserResponse updateUser(UserId id, UpdateUserRequest request) {
+        logger.debug("Updating user with ID: {}", id);
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + id));
 
@@ -160,9 +187,14 @@ public class UserService {
     }
 
     /**
-     * Activate a user.
+     * Activate a user with cache eviction.
      */
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#id.value"),
+        @CacheEvict(value = "users", key = "'active-users'")
+    })
     public UserResponse activateUser(UserId id) {
+        logger.debug("Activating user with ID: {}", id);
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + id));
         
@@ -172,9 +204,14 @@ public class UserService {
     }
 
     /**
-     * Deactivate a user.
+     * Deactivate a user with cache eviction.
      */
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#id.value"),
+        @CacheEvict(value = "users", key = "'active-users'")
+    })
     public UserResponse deactivateUser(UserId id) {
+        logger.debug("Deactivating user with ID: {}", id);
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + id));
         
@@ -184,9 +221,15 @@ public class UserService {
     }
 
     /**
-     * Delete a user.
+     * Delete a user with cache eviction.
      */
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#id.value"),
+        @CacheEvict(value = "users", key = "'active-users'"),
+        @CacheEvict(value = "users", allEntries = true) // Clear all user cache entries
+    })
     public void deleteUser(UserId id) {
+        logger.debug("Deleting user with ID: {}", id);
         if (!userRepository.existsById(id)) {
             throw new UserNotFoundException("User not found with ID: " + id);
         }
@@ -194,9 +237,11 @@ public class UserService {
     }
 
     /**
-     * Change user password.
+     * Change user password with cache eviction.
      */
+    @CacheEvict(value = "users", key = "#id.value")
     public void changePassword(UserId id, String newPassword) {
+        logger.debug("Changing password for user with ID: {}", id);
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + id));
         

@@ -40,12 +40,33 @@ spring:
       expiration: ${JWT_EXPIRATION:86400000} # 24 hours in milliseconds
       refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000} # 7 days
 
+  # Redis configuration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 3000ms
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
   cache:
-    type: simple
+    type: redis
     cache-names:
       - users
       - tasks
       - projects
+      - auth
+      - jwt-blacklist
+    redis:
+      time-to-live: 10m
 
 server:
   port: ${SERVER_PORT:8080}
@@ -121,6 +142,10 @@ spring:
     activate:
       on-profile: dev
       
+  # Use simple cache for development if Redis is not available
+  cache:
+    type: ${CACHE_TYPE:simple}
+      
 logging:
   level:
     com.demo.copilot.taskmanager: DEBUG
@@ -145,6 +170,10 @@ spring:
     
   flyway:
     enabled: false
+    
+  # Use simple cache for testing
+  cache:
+    type: simple
 
 logging:
   level:
