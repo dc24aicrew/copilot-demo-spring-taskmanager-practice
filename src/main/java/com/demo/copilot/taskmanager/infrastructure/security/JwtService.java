@@ -4,7 +4,10 @@ import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -12,6 +15,8 @@ import org.springframework.stereotype.Service;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -45,6 +50,17 @@ public class JwtService {
     
     @Value("${spring.security.jwt.refresh-expiration}")
     private long refreshTokenExpiration;
+    
+    // Redis template for distributed token blacklisting (optional dependency)
+    private final RedisTemplate<String, Date> redisTemplate;
+    
+    // Fallback in-memory blacklist when Redis is not available
+    private final Map<String, Date> fallbackBlacklist = new HashMap<>();
+
+    // Constructor with optional Redis template
+    public JwtService(@Autowired(required = false) RedisTemplate<String, Date> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     /**
      * Extract username from JWT token with enhanced validation.
@@ -321,21 +337,32 @@ public class JwtService {
     }
     
     /**
-     * Blacklist a token (add to blacklist).
+     * Blacklist a token using Redis for distributed environments.
      */
     public void blacklistToken(String token) {
         try {
             String jwtId = extractJwtId(token);
             Date expiration = extractExpiration(token);
-            blacklistedTokens.put(jwtId, expiration);
-            logger.info("Token blacklisted with ID: {}", jwtId);
+            
+            if (redisTemplate != null) {
+                // Use Redis for distributed blacklisting
+                Duration ttl = Duration.between(Instant.now(), expiration.toInstant());
+                if (!ttl.isNegative() && !ttl.isZero()) {
+                    redisTemplate.opsForValue().set("blacklist:" + jwtId, expiration, ttl);
+                    logger.info("Token blacklisted in Redis with ID: {}", jwtId);
+                }
+            } else {
+                // Fallback to in-memory blacklist
+                fallbackBlacklist.put(jwtId, expiration);
+                logger.info("Token blacklisted in memory with ID: {}", jwtId);
+            }
         } catch (Exception e) {
             logger.error("Failed to blacklist token: {}", e.getMessage());
         }
     }
     
     /**
-     * Check if token is blacklisted.
+     * Check if token is blacklisted using Redis with fallback.
      */
     public boolean isTokenBlacklisted(String token) {
         try {
@@ -344,31 +371,44 @@ public class JwtService {
                 return false;
             }
             
-            Date expiration = blacklistedTokens.get(jwtId);
-            if (expiration == null) {
-                return false;
+            if (redisTemplate != null) {
+                // Check Redis for blacklisted token
+                return Boolean.TRUE.equals(redisTemplate.hasKey("blacklist:" + jwtId));
+            } else {
+                // Fallback to in-memory blacklist
+                Date expiration = fallbackBlacklist.get(jwtId);
+                if (expiration == null) {
+                    return false;
+                }
+                
+                // Remove expired blacklisted tokens
+                if (expiration.before(new Date())) {
+                    fallbackBlacklist.remove(jwtId);
+                    return false;
+                }
+                
+                return true;
             }
-            
-            // Remove expired blacklisted tokens
-            if (expiration.before(new Date())) {
-                blacklistedTokens.remove(jwtId);
-                return false;
-            }
-            
-            return true;
         } catch (Exception e) {
             logger.error("Error checking token blacklist status: {}", e.getMessage());
-            return false;
+            return false; // Fail safely - don't block valid tokens due to infrastructure issues
         }
     }
     
     /**
      * Clean up expired blacklisted tokens.
+     * For Redis, this is handled automatically by TTL.
+     * For fallback in-memory storage, manual cleanup is performed.
      */
     public void cleanupExpiredBlacklistedTokens() {
-        Date now = new Date();
-        blacklistedTokens.entrySet().removeIf(entry -> entry.getValue().before(now));
-        logger.debug("Cleaned up expired blacklisted tokens");
+        if (redisTemplate == null) {
+            // Only cleanup fallback storage - Redis handles expiration automatically
+            Date now = new Date();
+            fallbackBlacklist.entrySet().removeIf(entry -> entry.getValue().before(now));
+            logger.debug("Cleaned up expired blacklisted tokens from fallback storage");
+        } else {
+            logger.debug("Redis handles token expiration automatically");
+        }
     }
 
     /**
@@ -399,7 +439,4 @@ public class JwtService {
             logger.warn("SECURITY WARNING: Using a weak or default JWT secret. Please use a strong, randomly generated secret in production!");
         }
     }
-    
-    // In-memory token blacklist (in production, use Redis or database)
-    private final Map<String, Date> blacklistedTokens = new HashMap<>();
 }
