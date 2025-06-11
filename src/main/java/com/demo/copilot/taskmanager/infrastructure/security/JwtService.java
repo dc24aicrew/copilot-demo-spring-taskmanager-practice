@@ -92,7 +92,17 @@ public class JwtService {
      * Extract audience from JWT token.
      */
     public String extractAudience(String token) {
-        return extractClaim(token, claims -> claims.get("aud", String.class));
+        return extractClaim(token, claims -> {
+            Object aud = claims.get("aud");
+            if (aud instanceof String) {
+                return (String) aud;
+            } else if (aud instanceof java.util.List) {
+                @SuppressWarnings("unchecked")
+                java.util.List<String> audList = (java.util.List<String>) aud;
+                return audList.isEmpty() ? null : audList.get(0);
+            }
+            return null;
+        });
     }
 
     /**
