@@ -79,4 +79,50 @@ public class AuthController {
         
         return ResponseEntity.ok(response);
     }
+    
+    @PostMapping("/logout")
+    @Operation(summary = "Logout user and blacklist JWT token")
+    public ResponseEntity<Void> logout(jakarta.servlet.http.HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            jwtService.blacklistToken(token);
+        }
+        return ResponseEntity.ok().build();
+    }
+    
+    @PostMapping("/refresh")
+    @Operation(summary = "Refresh JWT token")
+    public ResponseEntity<AuthResponse> refresh(jakarta.servlet.http.HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        String refreshToken = authHeader.substring(7);
+        
+        if (!jwtService.isRefreshToken(refreshToken) || !jwtService.validateToken(refreshToken)) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        String username = jwtService.extractUsername(refreshToken);
+        UserResponse user = userService.getUserByUsername(username);
+        
+        // Create a simple UserDetails implementation
+        UserDetails userDetails = org.springframework.security.core.userdetails.User.builder()
+            .username(user.getUsername())
+            .password("") // Not needed for token generation
+            .authorities("ROLE_" + user.getRole().name())
+            .build();
+        
+        String newToken = jwtService.generateToken(userDetails);
+        
+        AuthResponse response = AuthResponse.builder()
+            .token(newToken)
+            .user(user)
+            .message("Token refreshed successfully")
+            .build();
+        
+        return ResponseEntity.ok(response);
+    }
 }
