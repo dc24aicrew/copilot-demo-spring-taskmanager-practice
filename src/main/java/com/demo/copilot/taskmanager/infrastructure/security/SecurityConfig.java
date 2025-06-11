@@ -81,15 +81,15 @@ public class SecurityConfig {
             
             // Configure security headers
             .headers(headers -> headers
-                // Content Security Policy
-                .contentSecurityPolicy("default-src 'self'; " +
+                // Content Security Policy (updated to modern DSL)
+                .contentSecurityPolicy(csp -> csp
+                    .policyDirectives("default-src 'self'; " +
                                      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
                                      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
                                      "font-src 'self' https://fonts.gstatic.com; " +
                                      "img-src 'self' data: https:; " +
                                      "connect-src 'self'; " +
-                                     "frame-ancestors 'none';")
-                .and()
+                                     "frame-ancestors 'none';"))
                 
                 // HTTP Strict Transport Security (HSTS)
                 .httpStrictTransportSecurity(hstsConfig -> hstsConfig
@@ -99,8 +99,8 @@ public class SecurityConfig {
                 // X-Frame-Options (updated method)
                 .frameOptions(frameOptions -> frameOptions.deny())
                 
-                // X-Content-Type-Options
-                .contentTypeOptions(contentTypeOptions -> contentTypeOptions.and())
+                // X-Content-Type-Options (removed deprecated and())
+                .contentTypeOptions(contentTypeOptions -> {})
                 
                 // X-XSS-Protection
                 .addHeaderWriter(new XXssProtectionHeaderWriter())
