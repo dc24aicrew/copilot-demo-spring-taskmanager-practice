@@ -6,6 +6,19 @@ spring:
     name: config-server
   profiles:
     active: dev
+
+# Application-specific configuration using @ConfigurationProperties
+app:
+  config:
+    security:
+      username: ${CONFIG_USERNAME:config}
+      password: ${CONFIG_PASSWORD:config123}
+    git:
+      uri: ${CONFIG_GIT_URI:}
+      branch: ${CONFIG_GIT_BRANCH:main}
+      clone-on-start: ${CONFIG_GIT_CLONE:true}
+    native:
+      search-locations: ${CONFIG_NATIVE_LOCATIONS:classpath:/configs/,file:./configs/}
     
   # Cloud Config Server Configuration
   cloud:

@@ -269,17 +269,6 @@ spring:
       on-profile: dev
 
 # Use simple rate limiting for dev if Redis is not available
-  cloud:
-    gateway:
-      routes:
-        - id: user-service
-          uri: lb://user-service
-          predicates:
-            - Path=/api/users/**,/api/auth/**
-          filters:
-            - name: CircuitBreaker
-              args:
-                name: user-service
 
 ---
 # Docker profile with environment-specific overrides
