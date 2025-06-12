@@ -1,8 +1,9 @@
 package com.demo.copilot.taskmanager.presentation.exception;
 
-import com.demo.copilot.taskmanager.application.exception.DuplicateEmailException;
-import com.demo.copilot.taskmanager.application.exception.DuplicateUsernameException;
-import com.demo.copilot.taskmanager.application.exception.UserNotFoundException;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -13,9 +14,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import com.demo.copilot.taskmanager.application.exception.DuplicateEmailException;
+import com.demo.copilot.taskmanager.application.exception.DuplicateUsernameException;
+import com.demo.copilot.taskmanager.application.exception.UserNotFoundException;
 
 /**
  * Global exception handler for REST controllers.
@@ -110,10 +111,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGlobalException(Exception ex, WebRequest request) {
+        // Log the actual exception for debugging
+        org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class)
+            .error("Unhandled exception: {}", ex.getMessage(), ex);
+        
         ErrorResponse error = ErrorResponse.builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .error("Internal Server Error")
-                .message("An unexpected error occurred")
+                .message("An unexpected error occurred: " + ex.getMessage())
                 .path(request.getDescription(false).replace("uri=", ""))
                 .build();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);

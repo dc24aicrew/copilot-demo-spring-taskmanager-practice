@@ -3,10 +3,20 @@ spring:
     url: jdbc:postgresql://postgres:5432/taskmanager_demo
     username: ${POSTGRES_USER:taskmanager}
     password: ${POSTGRES_PASSWORD:taskmanager}
+  
+  # Redis configuration for Docker environment
+  data:
+    redis:
+      host: redis
+      port: 6379
+      password: 
+      database: 0
+      timeout: 3000ms
 
 logging:
   level:
-    com.demo.copilot.taskmanager: INFO
-    org.springframework.security: WARN
+    com.demo.copilot.taskmanager: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.security.authentication: DEBUG
   file:
     name: /app/logs/task-manager.log

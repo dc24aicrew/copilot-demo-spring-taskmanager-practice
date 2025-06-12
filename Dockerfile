@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for Spring Boot application
 
 # Build stage
-FROM maven:3.9.6-eclipse-temurin-17 AS build
+FROM --platform=$BUILDPLATFORM maven:3.9.6-eclipse-temurin-17 AS build
 WORKDIR /app
 
 # Copy pom.xml first for better Docker layer caching
@@ -13,21 +13,16 @@ COPY src ./src
 RUN mvn clean package -DskipTests -B
 
 # Runtime stage
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S spring && \
-    adduser -u 1001 -S spring -G spring
+# Install curl and create non-root user for security
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r spring && useradd -r -g spring spring
 
-# Copy jar from build stage
-COPY --from=build /app/target/*.jar app.jar
-
-# Change ownership to spring user
-RUN chown spring:spring app.jar
-
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Copy jar from build stage and change ownership
+COPY --from=build --chown=spring:spring /app/target/*.jar app.jar
 
 # Switch to non-root user
 USER spring:spring
