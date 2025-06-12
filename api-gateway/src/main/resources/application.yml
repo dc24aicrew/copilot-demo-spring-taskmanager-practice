@@ -1,0 +1,328 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  profiles:
+    active: dev
+    
+  # Config client configuration
+  config:
+    import: optional:configserver:http://${CONFIG_USERNAME:config}:${CONFIG_PASSWORD:config123}@${CONFIG_HOST:localhost}:${CONFIG_PORT:8888}
+
+# Application-specific configuration using @ConfigurationProperties
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:demo-secret-key-change-in-production-minimum-32-characters}
+      expiration: ${JWT_EXPIRATION:PT1H}  # 1 hour
+      refresh-expiration: ${JWT_REFRESH_EXPIRATION:P7D}  # 7 days
+  
+  gateway:
+    rate-limiting:
+      replenish-rate: ${RATE_LIMIT_REPLENISH:10}
+      burst-capacity: ${RATE_LIMIT_BURST:20}
+      requested-tokens: ${RATE_LIMIT_TOKENS:1}
+    circuit-breaker:
+      sliding-window-size: ${CB_SLIDING_WINDOW:10}
+      minimum-number-of-calls: ${CB_MIN_CALLS:5}
+      failure-rate-threshold: ${CB_FAILURE_RATE:50}
+      wait-duration-in-open-state: ${CB_WAIT_DURATION:PT30S}
+    retry:
+      max-attempts: ${RETRY_MAX_ATTEMPTS:3}
+      backoff-delay: ${RETRY_BACKOFF:PT0.1S}
+      max-backoff-delay: ${RETRY_MAX_BACKOFF:PT1S}
+  
+  # Cloud Gateway Configuration with improved patterns
+  cloud:
+    gateway:
+      # Global CORS configuration
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origins: 
+              - "http://localhost:3000"
+              - "http://localhost:3001"
+              - "http://localhost:8080"
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowed-headers: "*"
+            allow-credentials: true
+            max-age: 3600
+      
+      # Route definitions with improved configuration
+      routes:
+        # User Service Routes with enhanced patterns
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/users/**,/api/auth/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: user-service
+                fallbackUri: forward:/fallback/user-service
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: "#{@gatewayProperties.rateLimiting().replenishRate()}"
+                redis-rate-limiter.burstCapacity: "#{@gatewayProperties.rateLimiting().burstCapacity()}"
+                redis-rate-limiter.requestedTokens: "#{@gatewayProperties.rateLimiting().requestedTokens()}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: "#{@gatewayProperties.retry().maxAttempts()}"
+                statuses: BAD_GATEWAY,INTERNAL_SERVER_ERROR,SERVICE_UNAVAILABLE
+                methods: GET,POST
+                backoff:
+                  firstBackoff: "#{@gatewayProperties.retry().backoffDelay()}"
+                  maxBackoff: "#{@gatewayProperties.retry().maxBackoffDelay()}"
+        
+        # Task Service Routes with conditional loading
+        - id: task-service
+          uri: lb://task-service
+          predicates:
+            - Path=/api/tasks/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: task-service
+                fallbackUri: forward:/fallback/task-service
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 15
+                redis-rate-limiter.burstCapacity: 30
+                redis-rate-limiter.requestedTokens: 1
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY,INTERNAL_SERVER_ERROR,SERVICE_UNAVAILABLE
+                methods: GET,POST
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+        
+        # Notification Service Routes
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: notification-service
+                fallbackUri: forward:/fallback/notification-service
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+                redis-rate-limiter.requestedTokens: 1
+                key-resolver: "#{@userKeyResolver}"
+      
+      # Discovery configuration with health checks
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: discovery-service
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+
+  # Redis configuration for rate limiting
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 3000ms
+
+  # Security configuration
+  security:
+    jwt:
+      secret: ${JWT_SECRET:demo-secret-key-change-in-production-minimum-32-characters}
+
+# Eureka client configuration
+eureka:
+  instance:
+    hostname: ${GATEWAY_HOSTNAME:localhost}
+    prefer-ip-address: false
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://${EUREKA_USERNAME:admin}:${EUREKA_PASSWORD:admin123}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+
+# Circuit breaker configuration using externalized properties
+resilience4j:
+  circuitbreaker:
+    instances:
+      user-service:
+        sliding-window-size: "#{@gatewayProperties.circuitBreaker().slidingWindowSize()}"
+        minimum-number-of-calls: "#{@gatewayProperties.circuitBreaker().minimumNumberOfCalls()}"
+        failure-rate-threshold: "#{@gatewayProperties.circuitBreaker().failureRateThreshold()}"
+        wait-duration-in-open-state: "#{@gatewayProperties.circuitBreaker().waitDurationInOpenState()}"
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+      task-service:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+      notification-service:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      user-service:
+        max-attempts: "#{@gatewayProperties.retry().maxAttempts()}"
+        wait-duration: "#{@gatewayProperties.retry().backoffDelay()}"
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+
+# Management endpoints with enhanced observability
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,gateway,circuitbreakers,configprops,env
+      base-path: /actuator
+      cors:
+        allowed-origins: "*"
+        allowed-methods: GET,POST
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+      probes:
+        enabled: true
+    gateway:
+      enabled: true
+    configprops:
+      show-values: when-authorized
+  health:
+    circuitbreakers:
+      enabled: true
+    redis:
+      enabled: true
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    build:
+      enabled: true
+    git:
+      enabled: true
+    java:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      environment: ${spring.profiles.active}
+    distribution:
+      percentiles-histogram:
+        "[http.server.requests]": true
+      percentiles:
+        "[http.server.requests]": 0.5, 0.95, 0.99
+      slo:
+        "[http.server.requests]": 10ms, 50ms, 100ms, 200ms, 500ms
+
+# Logging configuration
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.cloud.netflix: INFO
+    com.demo.copilot.taskmanager: DEBUG
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"
+
+---
+# Development profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+# Use simple rate limiting for dev if Redis is not available
+
+---
+# Docker profile with environment-specific overrides
+spring:
+  config:
+    activate:
+      on-profile: docker
+      
+  config:
+    import: optional:configserver:http://${CONFIG_USERNAME:config}:${CONFIG_PASSWORD:config123}@config-server:8888
+
+  # Redis configuration for Docker environment
+  data:
+    redis:
+      host: redis
+      port: 6379
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+# Docker-specific app configuration
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:docker-secret-key-change-in-production-minimum-32-characters}
+  gateway:
+    rate-limiting:
+      replenish-rate: 20  # Higher rate for Docker environment
+      burst-capacity: 40
+
+eureka:
+  instance:
+    hostname: api-gateway
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_USERNAME:admin}:${EUREKA_PASSWORD:admin123}@eureka-server:8761/eureka/
+    registry-fetch-interval-seconds: 10
+    healthcheck:
+      enabled: true
+
+---
+# Production profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    com.demo.copilot.taskmanager: INFO

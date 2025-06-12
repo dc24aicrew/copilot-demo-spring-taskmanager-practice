@@ -1,0 +1,145 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - taskmanager-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: taskmanager_db
+      POSTGRES_USER: taskmanager
+      POSTGRES_PASSWORD: taskmanager
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - taskmanager-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskmanager -d taskmanager_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Service Discovery
+  eureka-server:
+    build:
+      context: .
+      dockerfile: ./eureka-server/Dockerfile
+    ports:
+      - "8761:8761"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_HOSTNAME=eureka-server
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    networks:
+      - taskmanager-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8761 && wget --spider --tries=1 --timeout=10 http://127.0.0.1:8761/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 6
+      start_period: 90s
+
+  # Configuration Server
+  config-server:
+    build:
+      context: .
+      dockerfile: ./config-server/Dockerfile
+    ports:
+      - "8888:8888"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_HOST=eureka-server
+      - CONFIG_HOSTNAME=config-server
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - taskmanager-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8888 && wget --spider --tries=1 --timeout=10 http://127.0.0.1:8888/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 6
+      start_period: 90s
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_HOST=eureka-server
+      - CONFIG_HOST=config-server
+      - REDIS_HOST=redis
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - taskmanager-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8080 && wget --spider --tries=1 --timeout=10 http://127.0.0.1:8080/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 6
+      start_period: 90s
+
+  # User Service
+  user-service:
+    build:
+      context: .
+      dockerfile: ./user-service/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_HOST=eureka-server
+      - CONFIG_HOST=config-server
+      - DB_HOST=postgres
+      - DB_NAME=user_service_db
+      - REDIS_HOST=redis
+      - REDIS_DATABASE=1
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - taskmanager-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8081 && wget --spider --tries=1 --timeout=10 http://127.0.0.1:8081/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 6
+      start_period: 90s
+
+networks:
+  taskmanager-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
