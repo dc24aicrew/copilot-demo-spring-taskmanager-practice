@@ -1,5 +1,6 @@
 package com.demo.copilot.taskmanager.infrastructure.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -32,11 +33,16 @@ public class CacheConfig {
 
     /**
      * Primary Redis cache manager when Redis is available.
+     * Uses Spring Boot's auto-configured ObjectMapper for consistent JSON serialization.
      */
     @Bean
     @Primary
     @ConditionalOnProperty(name = "spring.cache.type", havingValue = "redis", matchIfMissing = false)
-    public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory) {
+    public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory, 
+                                          ObjectMapper objectMapper) {
+        
+        // Create GenericJackson2JsonRedisSerializer with Spring Boot's auto-configured ObjectMapper
+        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
         
         // Default cache configuration with enhanced features
         RedisCacheConfiguration defaultCacheConfig = RedisCacheConfiguration.defaultCacheConfig()
@@ -45,7 +51,7 @@ public class CacheConfig {
                 .serializeKeysWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
-                        .fromSerializer(new GenericJackson2JsonRedisSerializer()))
+                        .fromSerializer(serializer))
                 .disableCachingNullValues(); // Security: don't cache null values
         
         // Specific cache configurations
