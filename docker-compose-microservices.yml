@@ -43,14 +43,15 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - EUREKA_HOSTNAME=eureka-server
+      - JAVA_OPTS=-Xmx512m -Xms256m
     networks:
       - taskmanager-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8761 && wget --spider --tries=1 --timeout=10 http://127.0.0.1:8761/actuator/health"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      timeout: 15s
+      retries: 6
+      start_period: 90s
 
   # Configuration Server
   config-server:
@@ -69,11 +70,11 @@ services:
     networks:
       - taskmanager-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8888 && wget --spider --tries=1 --timeout=10 http://127.0.0.1:8888/actuator/health"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      timeout: 15s
+      retries: 6
+      start_period: 90s
 
   # API Gateway
   api-gateway:
@@ -97,11 +98,11 @@ services:
     networks:
       - taskmanager-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8080 && wget --spider --tries=1 --timeout=10 http://127.0.0.1:8080/actuator/health"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      timeout: 15s
+      retries: 6
+      start_period: 90s
 
   # User Service
   user-service:
@@ -130,11 +131,11 @@ services:
     networks:
       - taskmanager-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8081 && wget --spider --tries=1 --timeout=10 http://127.0.0.1:8081/actuator/health"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      timeout: 15s
+      retries: 6
+      start_period: 90s
 
 networks:
   taskmanager-network:
