@@ -1,0 +1,109 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: dev
+    
+  # Cloud Config Server Configuration
+  cloud:
+    config:
+      server:
+        # Use native profile for file system based configuration
+        native:
+          search-locations: classpath:/configs/, file:./configs/
+        # Git repository configuration (commented for demo)
+        # git:
+        #   uri: https://github.com/your-org/config-repo
+        #   clone-on-start: true
+        #   default-label: main
+  
+  # Security configuration for Config Server
+  security:
+    user:
+      name: ${CONFIG_USERNAME:config}
+      password: ${CONFIG_PASSWORD:config123}
+      roles: ADMIN
+
+# Eureka client configuration
+eureka:
+  instance:
+    hostname: ${CONFIG_HOSTNAME:localhost}
+    prefer-ip-address: false
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://${EUREKA_USERNAME:admin}:${EUREKA_PASSWORD:admin123}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,refresh,env,configprops
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+# Logging configuration
+logging:
+  level:
+    org.springframework.cloud.config: DEBUG
+    com.demo.copilot.taskmanager: DEBUG
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"
+
+---
+# Development profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+      
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/configs/
+
+---
+# Docker profile  
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+eureka:
+  instance:
+    hostname: config-server
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_USERNAME:admin}:${EUREKA_PASSWORD:admin123}@eureka-server:8761/eureka/
+
+---
+# Production profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+# In production, use Git repository for configuration management
+  cloud:
+    config:
+      server:
+        git:
+          uri: ${CONFIG_GIT_URI:https://github.com/your-org/config-repo}
+          clone-on-start: true
+          default-label: ${CONFIG_GIT_BRANCH:main}
+          
+logging:
+  level:
+    org.springframework.cloud.config: INFO
+    com.demo.copilot.taskmanager: INFO

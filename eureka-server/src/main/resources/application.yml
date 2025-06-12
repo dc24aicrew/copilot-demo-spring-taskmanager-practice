@@ -1,0 +1,103 @@
+server:
+  port: 8761
+
+spring:
+  application:
+    name: eureka-server
+  profiles:
+    active: dev
+  
+  # Security configuration for Eureka Server
+  security:
+    user:
+      name: ${EUREKA_USERNAME:admin}
+      password: ${EUREKA_PASSWORD:admin123}
+      roles: ADMIN
+
+eureka:
+  instance:
+    hostname: ${EUREKA_HOSTNAME:localhost}
+    prefer-ip-address: false
+  client:
+    # This is a Eureka server, so it doesn't need to register itself
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+  server:
+    # Disable self-preservation mode in development
+    enable-self-preservation: ${EUREKA_SELF_PRESERVATION:false}
+    eviction-interval-timer-in-ms: 5000
+    # Wait time for initial replication
+    wait-time-in-ms-when-sync-empty: 0
+    # Number of registry sync retries
+    number-of-replication-retries: 2
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+# Logging configuration
+logging:
+  level:
+    com.netflix: INFO
+    org.springframework.cloud: DEBUG
+    com.demo.copilot.taskmanager: DEBUG
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"
+
+---
+# Development profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+      
+eureka:
+  server:
+    enable-self-preservation: false
+    
+logging:
+  level:
+    com.netflix: DEBUG
+
+---
+# Docker profile  
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+eureka:
+  instance:
+    hostname: eureka-server
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+
+---
+# Production profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+eureka:
+  server:
+    enable-self-preservation: true
+    
+logging:
+  level:
+    com.netflix: WARN
+    org.springframework.cloud: INFO
+    com.demo.copilot.taskmanager: INFO
