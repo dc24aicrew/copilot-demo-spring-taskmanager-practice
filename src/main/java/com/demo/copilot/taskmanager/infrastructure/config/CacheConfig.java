@@ -1,8 +1,6 @@
 package com.demo.copilot.taskmanager.infrastructure.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -35,18 +33,15 @@ public class CacheConfig {
 
     /**
      * Primary Redis cache manager when Redis is available.
+     * Uses Spring Boot's auto-configured ObjectMapper for consistent JSON serialization.
      */
     @Bean
     @Primary
     @ConditionalOnProperty(name = "spring.cache.type", havingValue = "redis", matchIfMissing = false)
-    public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory) {
+    public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory, 
+                                          ObjectMapper objectMapper) {
         
-        // Configure ObjectMapper with JSR310 module for LocalDateTime support
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        
-        // Create GenericJackson2JsonRedisSerializer with custom ObjectMapper
+        // Create GenericJackson2JsonRedisSerializer with Spring Boot's auto-configured ObjectMapper
         GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
         
         // Default cache configuration with enhanced features
