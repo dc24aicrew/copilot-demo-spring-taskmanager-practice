@@ -3,27 +3,22 @@ package com.demo.copilot.taskmanager.user.domain.valueobject;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-
 /**
- * Value object representing an email address.
+ * Pure domain value object representing an email address.
  * 
  * This class encapsulates email validation logic and ensures
  * that only valid email addresses are used throughout the system.
+ * 
+ * NOTE: This is a PURE domain value object with NO infrastructure concerns.
+ * JPA annotations are handled in the infrastructure layer.
  */
-@Embeddable
 public class Email {
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
         "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
     );
 
-    @Column(name = "email")
-    private String value;
-
-    // Default constructor for JPA
-    protected Email() {}
+    private final String value;
 
     private Email(String value) {
         this.value = validateAndNormalize(value);

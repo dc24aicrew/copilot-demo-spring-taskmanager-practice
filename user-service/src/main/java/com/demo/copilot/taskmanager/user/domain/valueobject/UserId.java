@@ -3,23 +3,18 @@ package com.demo.copilot.taskmanager.user.domain.valueobject;
 import java.util.Objects;
 import java.util.UUID;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-
 /**
- * Value object representing a User identifier.
+ * Pure domain value object representing a User identifier.
  * 
  * This class encapsulates the user ID and provides type safety
  * and validation for user identification throughout the system.
+ * 
+ * NOTE: This is a PURE domain value object with NO infrastructure concerns.
+ * JPA annotations are handled in the infrastructure layer.
  */
-@Embeddable
 public class UserId {
 
-    @Column(name = "id")
-    private UUID value;
-
-    // Default constructor for JPA
-    protected UserId() {}
+    private final UUID value;
 
     private UserId(UUID value) {
         this.value = Objects.requireNonNull(value, "User ID value cannot be null");

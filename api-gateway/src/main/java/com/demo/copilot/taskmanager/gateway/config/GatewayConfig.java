@@ -1,5 +1,8 @@
 package com.demo.copilot.taskmanager.gateway.config;
 
+import com.demo.copilot.taskmanager.gateway.config.properties.GatewayProperties;
+import com.demo.copilot.taskmanager.gateway.config.properties.SecurityProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,8 +18,12 @@ import java.security.Principal;
 
 /**
  * Gateway configuration for rate limiting, fallbacks, and other cross-cutting concerns.
+ * 
+ * Uses modern Spring Boot 3.x @ConfigurationProperties with record types
+ * for type-safe, validated configuration management.
  */
 @Configuration
+@EnableConfigurationProperties({GatewayProperties.class, SecurityProperties.class})
 public class GatewayConfig {
 
     /**

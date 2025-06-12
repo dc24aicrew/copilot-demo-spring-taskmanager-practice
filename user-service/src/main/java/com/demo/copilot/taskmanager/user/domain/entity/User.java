@@ -3,117 +3,153 @@ package com.demo.copilot.taskmanager.user.domain.entity;
 import com.demo.copilot.taskmanager.user.domain.valueobject.Email;
 import com.demo.copilot.taskmanager.user.domain.valueobject.UserId;
 import com.demo.copilot.taskmanager.user.domain.valueobject.UserRole;
-import jakarta.persistence.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
- * User domain entity representing a system user.
+ * Pure domain entity representing a system user.
  * 
  * This entity follows Domain-Driven Design principles and encapsulates
  * business logic related to user management.
+ * 
+ * NOTE: This is a PURE domain entity with NO infrastructure concerns.
+ * JPA annotations and persistence logic are handled in the infrastructure layer.
  */
-@Entity
-@Table(name = "users", indexes = {
-    @Index(name = "idx_user_email", columnList = "email", unique = true),
-    @Index(name = "idx_user_username", columnList = "username", unique = true)
-})
-@EntityListeners(AuditingEntityListener.class)
 public class User {
 
-    @EmbeddedId
-    private UserId id;
-
-    @Column(name = "username", nullable = false, unique = true, length = 50)
+    private final UserId id;
     private String username;
-
-    @Embedded
-    @AttributeOverride(name = "value", column = @Column(name = "email"))
     private Email email;
-
-    @Column(name = "password_hash", nullable = false)
     private String passwordHash;
-
-    @Column(name = "first_name", nullable = false, length = 100)
     private String firstName;
-
-    @Column(name = "last_name", nullable = false, length = 100)
     private String lastName;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false)
     private UserRole role;
-
-    @Column(name = "is_active", nullable = false)
-    private Boolean isActive;
-
-    @Column(name = "last_login_at")
+    private boolean isActive;
     private LocalDateTime lastLoginAt;
-
-    @Column(name = "avatar_url")
     private String avatarUrl;
-
-    @CreatedDate
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @LastModifiedDate
-    @Column(name = "updated_at", nullable = false)
+    private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    @Version
-    @Column(name = "version")
-    private Long version;
-
-    // Default constructor for JPA
-    protected User() {}
-
     private User(Builder builder) {
-        this.id = builder.id;
-        this.username = builder.username;
-        this.email = builder.email;
-        this.passwordHash = builder.passwordHash;
-        this.firstName = builder.firstName;
-        this.lastName = builder.lastName;
-        this.role = builder.role;
-        this.isActive = builder.isActive;
+        this.id = Objects.requireNonNull(builder.id, "User ID cannot be null");
+        this.username = Objects.requireNonNull(builder.username, "Username cannot be null");
+        this.email = Objects.requireNonNull(builder.email, "Email cannot be null");
+        this.passwordHash = Objects.requireNonNull(builder.passwordHash, "Password hash cannot be null");
+        this.firstName = Objects.requireNonNull(builder.firstName, "First name cannot be null");
+        this.lastName = Objects.requireNonNull(builder.lastName, "Last name cannot be null");
+        this.role = builder.role != null ? builder.role : UserRole.USER;
+        this.isActive = builder.isActive != null ? builder.isActive : true;
         this.avatarUrl = builder.avatarUrl;
+        this.createdAt = builder.createdAt != null ? builder.createdAt : LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
     }
 
-    // Business methods
+    // Business methods - the core of domain logic
+    
+    /**
+     * Activates the user account.
+     * Business rule: Only inactive users can be activated.
+     */
     public void activate() {
+        if (this.isActive) {
+            throw new IllegalStateException("User is already active");
+        }
         this.isActive = true;
+        this.updatedAt = LocalDateTime.now();
     }
 
+    /**
+     * Deactivates the user account.
+     * Business rule: Active users can be deactivated for security reasons.
+     */
     public void deactivate() {
+        if (!this.isActive) {
+            throw new IllegalStateException("User is already inactive");
+        }
         this.isActive = false;
+        this.updatedAt = LocalDateTime.now();
     }
 
-    public void updateLastLogin() {
+    /**
+     * Records a successful login attempt.
+     * Business rule: Only active users can login.
+     */
+    public void recordLogin() {
+        if (!this.isActive) {
+            throw new IllegalStateException("Cannot record login for inactive user");
+        }
         this.lastLoginAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
     }
 
+    /**
+     * Changes the user's password.
+     * Business rule: Password hash cannot be null or empty.
+     */
     public void changePassword(String newPasswordHash) {
         if (newPasswordHash == null || newPasswordHash.trim().isEmpty()) {
             throw new IllegalArgumentException("Password hash cannot be null or empty");
         }
         this.passwordHash = newPasswordHash;
+        this.updatedAt = LocalDateTime.now();
     }
 
+    /**
+     * Updates the user's profile information.
+     * Business rule: Only non-null values are updated.
+     */
     public void updateProfile(String firstName, String lastName, String avatarUrl) {
+        boolean changed = false;
+        
         if (firstName != null && !firstName.trim().isEmpty()) {
             this.firstName = firstName.trim();
+            changed = true;
         }
         if (lastName != null && !lastName.trim().isEmpty()) {
             this.lastName = lastName.trim();
+            changed = true;
         }
-        this.avatarUrl = avatarUrl;
+        if (avatarUrl != null) {
+            this.avatarUrl = avatarUrl.trim().isEmpty() ? null : avatarUrl.trim();
+            changed = true;
+        }
+        
+        if (changed) {
+            this.updatedAt = LocalDateTime.now();
+        }
     }
 
+    /**
+     * Updates the user's email address.
+     * Business rule: Email must be valid and unique (uniqueness checked by repository).
+     */
+    public void updateEmail(Email newEmail) {
+        if (newEmail == null) {
+            throw new IllegalArgumentException("Email cannot be null");
+        }
+        if (!this.email.equals(newEmail)) {
+            this.email = newEmail;
+            this.updatedAt = LocalDateTime.now();
+        }
+    }
+
+    /**
+     * Promotes or demotes the user's role.
+     * Business rule: Role changes should be logged for audit purposes.
+     */
+    public void changeRole(UserRole newRole) {
+        if (newRole == null) {
+            throw new IllegalArgumentException("Role cannot be null");
+        }
+        if (!this.role.equals(newRole)) {
+            this.role = newRole;
+            this.updatedAt = LocalDateTime.now();
+        }
+    }
+
+    // Query methods for business logic
+    
     public String getFullName() {
         return firstName + " " + lastName;
     }
@@ -126,7 +162,18 @@ public class User {
         return UserRole.MANAGER.equals(this.role);
     }
 
-    // Getters
+    public boolean hasLoggedInRecently(int daysThreshold) {
+        if (lastLoginAt == null) {
+            return false;
+        }
+        return lastLoginAt.isAfter(LocalDateTime.now().minusDays(daysThreshold));
+    }
+
+    public boolean canManageUsers() {
+        return isAdmin() || isManager();
+    }
+
+    // Getters (immutable access)
     public UserId getId() { return id; }
     public String getUsername() { return username; }
     public Email getEmail() { return email; }
@@ -134,12 +181,11 @@ public class User {
     public String getFirstName() { return firstName; }
     public String getLastName() { return lastName; }
     public UserRole getRole() { return role; }
-    public Boolean getIsActive() { return isActive; }
+    public boolean isActive() { return isActive; }
     public LocalDateTime getLastLoginAt() { return lastLoginAt; }
     public String getAvatarUrl() { return avatarUrl; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public Long getVersion() { return version; }
 
     @Override
     public boolean equals(Object o) {
@@ -167,7 +213,7 @@ public class User {
                '}';
     }
 
-    // Builder pattern
+    // Builder pattern for construction
     public static class Builder {
         private UserId id;
         private String username;
@@ -178,6 +224,7 @@ public class User {
         private UserRole role = UserRole.USER;
         private Boolean isActive = true;
         private String avatarUrl;
+        private LocalDateTime createdAt;
 
         public Builder id(UserId id) {
             this.id = id;
@@ -224,14 +271,12 @@ public class User {
             return this;
         }
 
+        public Builder createdAt(LocalDateTime createdAt) {
+            this.createdAt = createdAt;
+            return this;
+        }
+
         public User build() {
-            Objects.requireNonNull(id, "User ID cannot be null");
-            Objects.requireNonNull(username, "Username cannot be null");
-            Objects.requireNonNull(email, "Email cannot be null");
-            Objects.requireNonNull(passwordHash, "Password hash cannot be null");
-            Objects.requireNonNull(firstName, "First name cannot be null");
-            Objects.requireNonNull(lastName, "Last name cannot be null");
-            
             return new User(this);
         }
     }
